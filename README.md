@@ -164,6 +164,7 @@ Trained for **75 episodes** on a single **Kaggle T4** using **Unsloth 4-bit LoRA
 - **Wider LoRA on A100**: Target `gate_proj`, `up_proj`, `down_proj` (45M+ trainable params) for nuanced clinical phrasings
 - **Phase 4 — Multi-Patient**: Shift handoffs + juggling two cases with a shared nurse
 - **Extended Tool API**: `consult_specialist`, `image_order` (CT/X-ray), `pharmacy_check` (drug-allergy)
+- **DevOps & CI/CD Integration**: Establish automated pipelines (e.g., GitHub Actions) to run OpenEnv parity tests, validate Docker builds, and streamline deployments.
 
 ---
 
