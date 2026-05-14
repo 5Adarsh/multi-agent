@@ -386,7 +386,7 @@ def main() -> int:
         cmp_path = save_comparison_plot(dict(results_by_phase), str(out_dir))
         print(f"  Comparison: {cmp_path}", flush=True)
 
-    print("\n  Baseline evaluation complete .\n", flush=True)
+    print("\n  Baseline evaluation complete me hun.\n", flush=True)
     return 0
 
 
