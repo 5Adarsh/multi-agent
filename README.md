@@ -178,7 +178,6 @@ GET  /state  → full internal env state   # Debug only
 GET  /health → {"status": "ok"}          # Liveness check
 GET  /docs   → Swagger UI               # Interactive API docs
 ```
-#Adarsh
 
 ### Run Locally
 ```bash
