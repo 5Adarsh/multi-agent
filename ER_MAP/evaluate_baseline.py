@@ -40,6 +40,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List
 
+import mlflow
+
 # Force unbuffered output so terminal logs stream live during long runs
 try:
     sys.stdout.reconfigure(line_buffering=True)
@@ -250,6 +252,15 @@ def print_phase_summary(phase: int, results: List[Dict[str, Any]]) -> None:
     print(f"  Avg reward:  {avg_r:+.2f}", flush=True)
     print(f"  Avg steps:   {avg_s:.1f}", flush=True)
     print("=" * 70, flush=True)
+
+    # MLflow logging
+    mlflow.set_experiment("ER-MAP_Baseline_Evaluation")
+    with mlflow.start_run(run_name=f"Phase_{phase}_{_phase_name(phase).replace(' ', '_')}"):
+        mlflow.log_metric("win_rate", wins / n)
+        mlflow.log_metric("ama_rate", ama / n)
+        mlflow.log_metric("fatal_rate", wrong / n)
+        mlflow.log_metric("avg_reward", avg_r)
+        mlflow.log_metric("avg_steps", avg_s)
 
 
 # ---------------------------------------------------------------------------
