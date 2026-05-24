@@ -210,8 +210,14 @@ def print_doctor_action(action_str: str, step: int):
         print(f"              | -> {a.get('target','')}: \"{a.get('message','')}\"", flush=True)
     elif tool == "order_lab":
         print(f"              | -> order_lab: {a.get('test_name','')}", flush=True)
+    elif tool == "read_soap":
+        print(f"              | -> read_soap: section={a.get('section','')}", flush=True)
+    elif tool == "update_soap":
+        print(f"              | -> update_soap: section={a.get('section','')} content={a.get('content','')[:80]}", flush=True)
     elif tool == "terminal_discharge":
         print(f"              | -> DISCHARGE: {a.get('treatment','')[:100]}", flush=True)
+    else:
+        print(f"              | -> {tool}: {action_str[:100]}", flush=True)
 
 
 def print_observation(obs_str: str, indent="      "):
@@ -238,6 +244,17 @@ def print_observation(obs_str: str, indent="      "):
     elif event == "lab_result":
         tag = " (DUP)" if obs.get("redundant") else ""
         print(f"{indent}LAB     | [{obs.get('test_name','')}]{tag}: {obs.get('result','')[:100]}", flush=True)
+    elif event == "soap_read":
+        print(f"{indent}EMR     | read_soap (section={obs.get('section','')})", flush=True)
+        content = obs.get("content", "")
+        if isinstance(content, dict):
+            snippet = ", ".join(f"{k}: {str(v)[:30]}" for k, v in content.items())
+            print(f"{indent}        | {snippet[:120]}", flush=True)
+        else:
+            print(f"{indent}        | {str(content)[:120]}", flush=True)
+    elif event == "soap_updated":
+        print(f"{indent}EMR     | SOAP updated (section={obs.get('section','')})", flush=True)
+        print(f"{indent}        | message: {obs.get('message','')[:120]}", flush=True)
     elif event == "terminal_win":
         print(f"{indent}RESULT  | >>> WIN! Patient stabilized. <<<", flush=True)
     elif event == "terminal_fatal":
@@ -248,6 +265,8 @@ def print_observation(obs_str: str, indent="      "):
         print(f"{indent}RESULT  | >>> AMA! Patient left: \"{obs.get('patient_message','')[:80]}\" <<<", flush=True)
     elif event == "system_error":
         print(f"{indent}ERROR   | {obs.get('message','')[:100]}", flush=True)
+    else:
+        print(f"{indent}EVENT   | {event}: {obs_str[:120]}", flush=True)
 
 
 # ---------------------------------------------------------------------------

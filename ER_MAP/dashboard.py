@@ -810,7 +810,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Agent Canvas</title>
+<title>ER-MAP Simulation Canvas</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -843,7 +843,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
   .custom-scrollbar::-webkit-scrollbar { width: 4px; }
   .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background-color: rgba(71, 85, 105, 0.5);
+    background-color: rgba(71, 85, 105, 0.4);
     border-radius: 10px;
   }
 </style>
@@ -856,7 +856,6 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
     // ------------------------------------------------------------------
     //  Inline Lucide icons (Stethoscope, User, Activity, Check)
-    //  — lifted from lucide-react source so we don't pull a runtime dep.
     // ------------------------------------------------------------------
     const Stethoscope = ({ className }) => (
       <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"
@@ -915,7 +914,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     };
 
     // ------------------------------------------------------------------
-    //  Animation sub-components — lifted verbatim from temp.jsx
+    //  Animation sub-components
     // ------------------------------------------------------------------
     const GlowingCircleAnimation = ({ colorClass }) => (
       <div className="relative flex items-center justify-center w-full h-full">
@@ -967,11 +966,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
     //                              ROOT
     // ==================================================================
     function AgentCanvas() {
-      // ---- temp.jsx state (preserved) ----
       const [activeAgent, setActiveAgent] = useState(null);
-      const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+      const [isSidebarOpen, setIsSidebarOpen] = useState(true); // default open for full God view
 
-      // ---- runtime-only state for live API wiring ----
       const [phase, setPhase]                 = useState(1);
       const [running, setRunning]             = useState(false);
       const [stepCount, setStepCount]         = useState(0);
@@ -983,7 +980,6 @@ HTML_PAGE = r"""<!DOCTYPE html>
       const [persona, setPersona]             = useState(null);
       const [conversation, setConversation]   = useState([]);
 
-      // refs (audio + loop control — never trigger re-render)
       const audioQueueRef    = useRef([]);
       const isPlayingRef     = useRef(false);
       const renderedCountRef = useRef(0);
@@ -996,7 +992,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         }
       }, [conversation]);
 
-      // ---------------- Audio queue (drives card activation) ----------------
+      // ---------------- Audio queue ----------------
       const processQueue = useCallback(async () => {
         if (isPlayingRef.current || audioQueueRef.current.length === 0) return;
         isPlayingRef.current = true;
@@ -1145,303 +1141,366 @@ HTML_PAGE = r"""<!DOCTYPE html>
         setActiveAgent(null);
       };
 
-      // ==================================================================
-      //                              RENDER
-      //   Mirrors UI/temp.jsx 1:1; the only adds are the small floating
-      //   control pill (top-center of canvas) and the live data wiring
-      //   inside the Live Rewards + Clinical Phases panels.
-      // ==================================================================
       return (
-        <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-8 font-sans text-slate-200 selection:bg-indigo-500/30">
+        <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 font-sans text-slate-200 selection:bg-indigo-500/30">
 
-          {/* Main Container — identical to temp.jsx */}
-          <div className="relative w-full max-w-5xl h-[600px] bg-slate-900/60 backdrop-blur-2xl rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] border border-slate-800 overflow-hidden flex">
+          {/* Main Dashboard Panel */}
+          <div className="relative w-full max-w-6xl h-[700px] bg-slate-900/60 backdrop-blur-2xl rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] border border-slate-800/80 overflow-hidden flex">
 
             {/* Subtle grid background */}
-            <div className="absolute inset-0 opacity-[0.05] pointer-events-none"
+            <div className="absolute inset-0 opacity-[0.03] pointer-events-none"
                  style={{
                    backgroundImage: 'linear-gradient(rgba(255,255,255,1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,1) 1px, transparent 1px)',
-                   backgroundSize: '32px 32px',
+                   backgroundSize: '24px 24px',
                  }}/>
 
-            {/* ---------------- Sidebar ---------------- */}
+            {/* ---------------- COLLAPSIBLE SIDEBAR ---------------- */}
             <div
-              onClick={() => { if (!isSidebarOpen) setIsSidebarOpen(true); }}
-              className={`relative border-r border-slate-800/80 bg-slate-900/80 backdrop-blur-md z-20 shadow-[4px_0_24px_rgba(0,0,0,0.2)] transition-all duration-300 ease-in-out overflow-hidden flex shrink-0
-                ${isSidebarOpen ? 'w-[350px]' : 'w-16 cursor-pointer hover:bg-slate-800/80'}`}
+              className={`relative border-r border-slate-800/60 bg-slate-900/70 backdrop-blur-md z-20 shadow-[4px_0_24px_rgba(0,0,0,0.2)] transition-all duration-300 ease-in-out overflow-hidden flex shrink-0
+                ${isSidebarOpen ? 'w-[320px]' : 'w-14'}`}
             >
-              {/* Closed State */}
-              <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${isSidebarOpen ? 'opacity-0 pointer-events-none' : 'opacity-100 delay-100'}`}>
-                <div className="rotate-180" style={{ writingMode: 'vertical-rl' }}>
-                  <span className="text-[11px] font-bold tracking-[0.3em] text-slate-500 uppercase whitespace-nowrap">Multi-Agent Interface</span>
-                </div>
-              </div>
-
-              {/* Open State */}
-              <div className={`absolute inset-0 w-[350px] p-6 flex flex-col transition-opacity duration-300 overflow-y-auto custom-scrollbar ${isSidebarOpen ? 'opacity-100 delay-100' : 'opacity-0 pointer-events-none'}`}>
-                {/* Header + close */}
-                <div className="flex items-center justify-between mb-8 cursor-pointer group"
-                     onClick={(e) => { e.stopPropagation(); setIsSidebarOpen(false); }}>
-                  <span className="text-[11px] font-bold tracking-[0.2em] text-slate-400 uppercase">System Panel</span>
-                  <div className="w-6 h-6 rounded-full bg-slate-800/50 flex items-center justify-center border border-slate-700/50 group-hover:bg-slate-700/80 transition-colors">
+              {/* Closed Toggle Button (Vertical Text + Hover) */}
+              {!isSidebarOpen && (
+                <div
+                  onClick={() => setIsSidebarOpen(true)}
+                  className="absolute inset-0 flex flex-col items-center justify-between py-6 cursor-pointer hover:bg-slate-800/40 transition-colors"
+                >
+                  <div className="w-6 h-6 rounded-full bg-slate-800/60 flex items-center justify-center border border-slate-700/50 hover:bg-indigo-650 transition-colors">
                     <svg className="w-3 h-3 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7"/>
                     </svg>
                   </div>
-                </div>
-
-                {/* Section A: Live Rewards */}
-                <div className="mb-8">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Live Rewards</h3>
-                    <span className={`text-xs font-mono font-bold ${totalReward > 0.01 ? 'text-green-400/90 drop-shadow-[0_0_4px_rgba(74,222,128,0.3)]' : totalReward < -0.01 ? 'text-red-400/90 drop-shadow-[0_0_4px_rgba(248,113,113,0.3)]' : 'text-slate-500'}`}>
-                      {totalReward >= 0 ? '+' : ''}{totalReward.toFixed(2)} Total
-                    </span>
+                  <div className="rotate-180 select-none" style={{ writingMode: 'vertical-rl' }}>
+                    <span className="text-[10px] font-bold tracking-[0.25em] text-slate-500 uppercase whitespace-nowrap">METRICS & PERSONAS</span>
                   </div>
-                  <div className="bg-slate-950/40 rounded-xl border border-slate-800/50 p-4 h-36 overflow-y-auto font-mono text-[11px] space-y-2.5 custom-scrollbar shadow-inner">
-                    {Object.keys(COMPONENT_LABELS)
-                      .filter(k => rewardComponents[k] !== undefined && Math.abs(rewardComponents[k]) > 0.001)
-                      .map(k => {
-                        const v = rewardComponents[k];
-                        const sign = v >= 0 ? '+' : '';
-                        const cls = v > 0 ? 'text-green-400/90' : v < 0 ? 'text-red-400/90' : 'text-slate-400';
+                  <div className="w-2 h-2 rounded-full bg-indigo-500/50" />
+                </div>
+              )}
+
+              {/* Open Sidebar State */}
+              {isSidebarOpen && (
+                <div className="w-full p-5 flex flex-col transition-opacity duration-300 overflow-y-auto custom-scrollbar">
+                  {/* Header */}
+                  <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-800/50 shrink-0">
+                    <span className="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase">GOD'S VIEW</span>
+                    <button
+                      onClick={() => setIsSidebarOpen(false)}
+                      className="w-5 h-5 rounded-full bg-slate-800/50 flex items-center justify-center border border-slate-700/50 hover:bg-slate-700 transition-colors">
+                      <svg className="w-2.5 h-2.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7"/>
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* Section A: Live Rewards */}
+                  <div className="mb-6 shrink-0">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">Live Rewards</h3>
+                      <span className={`text-[11px] font-mono font-bold ${totalReward > 0.01 ? 'text-green-400 drop-shadow-[0_0_4px_rgba(74,222,128,0.3)]' : totalReward < -0.01 ? 'text-red-400 drop-shadow-[0_0_4px_rgba(248,113,113,0.3)]' : 'text-slate-500'}`}>
+                        {totalReward >= 0 ? '+' : ''}{totalReward.toFixed(2)} Total
+                      </span>
+                    </div>
+                    <div className="bg-slate-950/45 rounded-xl border border-slate-850 p-3 h-[110px] overflow-y-auto font-mono text-[10px] space-y-2 custom-scrollbar shadow-inner">
+                      {Object.keys(COMPONENT_LABELS)
+                        .filter(k => rewardComponents[k] !== undefined && Math.abs(rewardComponents[k]) > 0.001)
+                        .map(k => {
+                          const v = rewardComponents[k];
+                          const sign = v >= 0 ? '+' : '';
+                          const cls = v > 0 ? 'text-green-400/90' : v < 0 ? 'text-red-400/90' : 'text-slate-500';
+                          return (
+                            <div key={k} className="flex justify-between items-center border-b border-slate-900/50 pb-1 last:border-0 last:pb-0">
+                              <span className="text-slate-405">{COMPONENT_LABELS[k]}</span>
+                              <span className={cls}>{sign}{v.toFixed(2)}</span>
+                            </div>
+                          );
+                        })}
+                      {Object.keys(rewardComponents).filter(k => Math.abs(rewardComponents[k] || 0) > 0.001).length === 0 && (
+                        <div className="text-slate-600 italic py-2 text-center">Reward breakdown will load live.</div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Section B: Clinical Phases */}
+                  <div className="mb-6 shrink-0 border-t border-slate-800/40 pt-4">
+                    <h3 className="text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-3">Clinical Phases</h3>
+                    <div className="space-y-2.5">
+                      {PHASES.map(({ key, label }, i) => {
+                        const done    = phasesDone.includes(key);
+                        const current = !done && key === currentPhase;
                         return (
-                          <div key={k} className="flex justify-between items-center">
-                            <span className="text-slate-400">{COMPONENT_LABELS[k]}</span>
-                            <span className={cls}>{sign}{v.toFixed(2)}</span>
+                          <div key={key} className="flex items-center gap-2.5">
+                            <div className={`w-3.5 h-3.5 rounded-[4px] border flex items-center justify-center transition-colors shrink-0
+                              ${done ? 'bg-indigo-950/40 border-indigo-500/30' : current ? 'border-indigo-500/50 bg-indigo-500/10' : 'border-slate-800 bg-slate-900/20'}`}>
+                              {done && <Check className="w-2.5 h-2.5 text-indigo-400" strokeWidth={3.5} />}
+                            </div>
+                            <span className={`text-[10px] font-semibold tracking-wide ${done ? 'text-slate-500 line-through' : current ? 'text-indigo-300 drop-shadow-[0_0_6px_rgba(129,140,248,0.4)] font-bold' : 'text-slate-650'}`}>
+                              {label}
+                            </span>
+                            {current && (
+                              <span className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-450 animate-pulse shadow-[0_0_8px_rgba(129,140,248,0.8)]" />
+                            )}
                           </div>
                         );
                       })}
-                    {Object.keys(rewardComponents).filter(k => Math.abs(rewardComponents[k] || 0) > 0.001).length === 0 && (
-                      <div className="text-slate-600 italic">Components will appear here.</div>
-                    )}
+                    </div>
                   </div>
+
+                  {/* Section C: Agent Personas */}
+                  {persona && (
+                    <div className="border-t border-slate-800/50 pt-4 pb-2">
+                      <div className="flex items-center justify-between mb-3 shrink-0">
+                        <h3 className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">Target Persona</h3>
+                        {persona.is_emergency ? (
+                          <span className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse">🚨 EMERGENT</span>
+                        ) : (
+                          <span className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-550/20 text-emerald-450 border border-emerald-500/30">STABLE</span>
+                        )}
+                      </div>
+                      <div className="space-y-4 text-[10px]">
+                        {/* Patient */}
+                        <div>
+                          <div className="flex items-center gap-1.5 mb-1.5">
+                            <User className="w-3 h-3 text-teal-400" />
+                            <span className="font-bold text-teal-400/80 uppercase">Patient Traits</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {Object.entries(persona.patient).map(([k, v]) => (
+                              <div key={k} className="bg-slate-950/40 border border-slate-850 rounded-lg p-1.5">
+                                <div className="text-[8px] text-slate-500 uppercase leading-none mb-1">{k}</div>
+                                <div className="text-[9px] text-slate-350 font-medium truncate">{String(v).replace(/_/g, ' ')}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        {/* Nurse */}
+                        <div>
+                          <div className="flex items-center gap-1.5 mb-1.5">
+                            <Activity className="w-3 h-3 text-blue-400" />
+                            <span className="font-bold text-blue-400/80 uppercase">Nurse Traits</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {Object.entries(persona.nurse).map(([k, v]) => (
+                              <div key={k} className="bg-slate-950/40 border border-slate-850 rounded-lg p-1.5">
+                                <div className="text-[8px] text-slate-500 uppercase leading-none mb-1">{k}</div>
+                                <div className="text-[9px] text-slate-350 font-medium truncate">{String(v).replace(/_/g, ' ')}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* ---------------- MAIN DISPLAY AREA ---------------- */}
+            <div className="flex-1 flex flex-col h-full overflow-hidden">
+              
+              {/* Header / Control Pill Bar */}
+              <div className="h-16 border-b border-slate-800/80 px-6 flex items-center justify-between bg-slate-900/40 backdrop-blur-sm z-10 shrink-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">ER-MAP TRIAGE CORE</span>
+                  {running && (
+                    <span className="flex h-1.5 w-1.5 relative">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-450 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                    </span>
+                  )}
+                </div>
+                
+                {/* Control Panel */}
+                <div className="flex items-center gap-3">
+                  {!running ? (
+                    <>
+                      <select
+                        value={phase}
+                        onChange={(e) => setPhase(Number(e.target.value))}
+                        className="bg-slate-950 border border-slate-850 text-slate-350 text-xs rounded-lg px-2.5 py-1.5 cursor-pointer focus:outline-none focus:border-indigo-500/50">
+                        <option value={1}>Phase 1 · Tool Mastery</option>
+                        <option value={2}>Phase 2 · Clinical Reasoning</option>
+                        <option value={3}>Phase 3 · Empathy + Chaos</option>
+                      </select>
+                      <button
+                        onClick={startCase}
+                        className="bg-indigo-650 hover:bg-indigo-600 text-white text-xs font-semibold tracking-wider uppercase px-4 py-1.5 rounded-lg transition flex items-center gap-1.5 shadow-[0_4px_12px_rgba(99,102,241,0.25)]">
+                        Start Case
+                      </button>
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-3 bg-slate-950 border border-slate-850 px-4 py-1.5 rounded-lg text-xs font-mono">
+                      <span className="text-slate-450">Phase <span className="text-indigo-400 font-semibold">{phase}</span></span>
+                      <span className="text-slate-700">|</span>
+                      <span className="text-slate-450">Step <span className="text-indigo-400 font-semibold">{stepCount}</span></span>
+                      <span className="text-slate-700">|</span>
+                      <span className={`font-bold ${totalReward > 0.01 ? 'text-emerald-450' : totalReward < -0.01 ? 'text-red-405' : 'text-slate-300'}`}>
+                        {totalReward >= 0 ? '+' : ''}{totalReward.toFixed(2)} Rwd
+                      </span>
+                      {outcome && (
+                        <>
+                          <span className="text-slate-700">|</span>
+                          <span className={`font-bold uppercase tracking-wider px-1.5 py-0.5 rounded text-[9px] ${
+                            outcome === 'WIN' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                            outcome === 'AMA' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+                            'bg-red-500/20 text-red-400 border border-red-500/30'
+                          }`}>{outcome}</span>
+                        </>
+                      )}
+                      <button onClick={stopCase} className="ml-2 text-slate-500 hover:text-red-400 text-sm leading-none transition-colors">×</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Grid Content Area: Prevents overlap completely */}
+              <div className="flex-1 grid grid-cols-12 gap-5 p-6 overflow-hidden min-h-0">
+                
+                {/* Column A (cols 1-4): Doctor & Nurse Cards */}
+                <div className="col-span-4 flex flex-col gap-4 justify-center min-h-0">
+                  
+                  {/* Doctor Card */}
+                  <div className={`w-full bg-slate-900/80 backdrop-blur-xl rounded-2xl p-4.5 border shadow-md transition-all duration-500 flex items-center gap-3.5
+                    ${activeAgent === 'doctor' ? 'shadow-[0_8px_30px_rgba(99,102,241,0.15)] border-indigo-500/40 scale-[1.015]' : 'border-slate-800 hover:border-slate-750'}`}>
+                    <div className="relative flex items-center justify-center w-11 h-11 shrink-0">
+                      <div className="z-10 relative bg-slate-850 rounded-full p-2 border border-slate-750 flex items-center justify-center w-full h-full shadow">
+                        {activeAgent === 'doctor'
+                          ? <GlowingCircleAnimation colorClass="bg-indigo-400" />
+                          : <Stethoscope className="w-5 h-5 text-slate-450" />}
+                      </div>
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="font-semibold text-slate-200 text-sm truncate">Doctor</h3>
+                      <p className="text-[9px] font-semibold text-slate-500 uppercase tracking-wider mt-0.5">{activeAgent === 'doctor' ? 'Analyzing Case...' : 'Attending Physician'}</p>
+                    </div>
+                    <div className="ml-auto shrink-0">
+                      {activeAgent === 'doctor' ? (
+                        <span className="relative flex h-1.5 w-1.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-indigo-500"></span>
+                        </span>
+                      ) : (
+                        <div className="w-1.5 h-1.5 rounded-full bg-slate-750" />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Nurse Card */}
+                  <div className={`w-full bg-slate-900/80 backdrop-blur-xl rounded-2xl p-4.5 border shadow-md transition-all duration-500 flex items-center gap-3.5
+                    ${activeAgent === 'nurse' ? 'shadow-[0_8px_30px_rgba(59,130,246,0.15)] border-blue-500/40 scale-[1.015]' : 'border-slate-800 hover:border-slate-750'}`}>
+                    <div className="relative flex items-center justify-center w-11 h-11 shrink-0">
+                      <div className="z-10 relative bg-slate-850 rounded-full p-2 border border-slate-750 flex items-center justify-center w-full h-full shadow">
+                        {activeAgent === 'nurse'
+                          ? <VoiceRecordAnimation colorClass="bg-blue-400" />
+                          : <Activity className="w-5 h-5 text-slate-450" />}
+                      </div>
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="font-semibold text-slate-200 text-sm truncate">Nurse</h3>
+                      <p className="text-[9px] font-semibold text-slate-500 uppercase tracking-wider mt-0.5">{activeAgent === 'nurse' ? 'Reporting Vitals...' : 'Triage Nurse'}</p>
+                    </div>
+                    <div className="ml-auto shrink-0">
+                      {activeAgent === 'nurse' ? (
+                        <span className="relative flex h-1.5 w-1.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-500"></span>
+                        </span>
+                      ) : (
+                        <div className="w-1.5 h-1.5 rounded-full bg-slate-750" />
+                      )}
+                    </div>
+                  </div>
+
                 </div>
 
-                {/* Section B: Clinical Phases */}
-                <div className="mt-8 mb-8">
-                  <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-4">Clinical Phases</h3>
-                  <div className="space-y-3.5">
-                    {PHASES.map(({ key, label }, i) => {
-                      const done    = phasesDone.includes(key);
-                      const current = !done && key === currentPhase;
+                {/* Column B (cols 5-9): Scrolling Dialogue Transcript Console */}
+                <div className="col-span-5 flex flex-col h-full bg-slate-950/45 border border-slate-850/80 rounded-2xl p-4 shadow-inner min-h-0">
+                  <div className="text-[10px] font-bold text-slate-550 uppercase tracking-widest mb-3 border-b border-slate-850 pb-2 flex items-center justify-between shrink-0">
+                    <span>Dialogue Transcript</span>
+                    {running && <span className="text-[8px] font-normal text-indigo-400 animate-pulse tracking-normal">Streaming Live</span>}
+                  </div>
+                  <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 pr-1 min-h-0">
+                    {conversation.map((msg, idx) => {
+                      const color = 
+                        msg.agent === 'doctor' ? 'text-indigo-400' :
+                        msg.agent === 'nurse' ? 'text-blue-450' :
+                        msg.agent === 'patient' ? 'text-teal-400' :
+                        'text-slate-450';
+                      
+                      const bgColor = 
+                        msg.agent === 'doctor' ? 'bg-indigo-950/10 border-indigo-900/10' :
+                        msg.agent === 'nurse' ? 'bg-blue-950/10 border-blue-900/10' :
+                        msg.agent === 'patient' ? 'bg-teal-950/10 border-teal-900/10' :
+                        'bg-slate-900/10 border-slate-850/10';
+
                       return (
-                        <div key={key} className="flex items-center gap-3">
-                          <div className={`w-4 h-4 rounded-[4px] border flex items-center justify-center transition-colors
-                            ${done ? 'bg-slate-700/80 border-slate-600/80' : current ? 'border-indigo-500/50 bg-indigo-500/10' : 'border-slate-700/50 bg-slate-800/30'}`}>
-                            {done && <Check className="w-3 h-3 text-slate-300" strokeWidth={3} />}
+                        <div key={idx} className={`text-xs border rounded-xl p-3 shadow-sm ${bgColor}`}>
+                          <div className="flex items-center justify-between font-mono text-[9px] font-bold mb-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className={`px-1.5 py-0.5 rounded bg-slate-950 ${color}`}>{msg.agent.toUpperCase()}</span>
+                              <span className="text-slate-650 font-normal">→</span>
+                              <span className="text-slate-455">{msg.target ? msg.target.toUpperCase() : 'ALL'}</span>
+                            </div>
+                            {msg.type && <span className="text-[8px] text-slate-600 font-normal tracking-wide">{msg.type.toUpperCase()}</span>}
                           </div>
-                          <span className={`text-[11px] font-semibold tracking-wide ${done ? 'text-slate-500' : current ? 'text-indigo-300 drop-shadow-[0_0_8px_rgba(129,140,248,0.5)]' : 'text-slate-600'}`}>
-                            {label}
-                          </span>
-                          {current && (
-                            <span className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse shadow-[0_0_8px_rgba(129,140,248,0.8)]" />
+                          {msg.thought && (
+                            <div className="text-[10px] text-slate-500 italic mb-1.5 font-normal leading-relaxed border-l border-slate-800 pl-2">
+                              {msg.thought}
+                            </div>
                           )}
+                          <div className="text-slate-300 leading-relaxed font-normal">
+                            {msg.message}
+                          </div>
                         </div>
                       );
                     })}
+                    {conversation.length === 0 && (
+                      <div className="h-full flex flex-col items-center justify-center text-slate-600 text-center text-xs italic py-10">
+                        <svg className="w-8 h-8 text-slate-700/80 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                        </svg>
+                        <span>No conversation events logged yet.</span>
+                        <span className="text-[10px] text-slate-750 mt-1">Start a triage case to stream dialogue here.</span>
+                      </div>
+                    )}
+                    <div ref={chatEndRef} />
                   </div>
                 </div>
 
-                {/* Section C: Agent Personas */}
-                {persona && (
-                  <div className="border-t border-slate-800/50 pt-6 pb-4">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Agent Personas</h3>
-                      {persona.is_emergency ? (
-                        <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse shadow-[0_0_8px_rgba(248,113,113,0.3)]">🚨 EMERGENCY</span>
+                {/* Column C (cols 10-12): Patient Card */}
+                <div className="col-span-3 flex flex-col justify-center min-h-0">
+                  
+                  {/* Patient Card */}
+                  <div className={`w-full bg-slate-900/80 backdrop-blur-xl rounded-2xl p-4.5 border shadow-md transition-all duration-500 flex items-center gap-3.5
+                    ${activeAgent === 'patient' ? 'shadow-[0_8px_30px_rgba(20,184,166,0.15)] border-teal-500/40 scale-[1.015]' : 'border-slate-800 hover:border-slate-750'}`}>
+                    <div className="relative flex items-center justify-center w-11 h-11 shrink-0">
+                      <div className="z-10 relative bg-slate-850 rounded-full p-2 border border-slate-750 flex items-center justify-center w-full h-full shadow">
+                        {activeAgent === 'patient'
+                          ? <GptVoiceAnimation colorClass="bg-teal-400" />
+                          : <User className="w-5 h-5 text-slate-450" />}
+                      </div>
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="font-semibold text-slate-200 text-sm truncate">Patient</h3>
+                      <p className="text-[9px] font-semibold text-slate-500 uppercase tracking-wider mt-0.5">{activeAgent === 'patient' ? 'Speaking...' : 'Visiting'}</p>
+                    </div>
+                    <div className="ml-auto shrink-0">
+                      {activeAgent === 'patient' ? (
+                        <span className="relative flex h-1.5 w-1.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-450 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-teal-500"></span>
+                        </span>
                       ) : (
-                        <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Non-Emergency</span>
+                        <div className="w-1.5 h-1.5 rounded-full bg-slate-750" />
                       )}
                     </div>
-                    <div className="space-y-6">
-                      {/* Patient */}
-                      <div>
-                        <div className="flex items-center gap-2 mb-2">
-                          <User className="w-3 h-3 text-teal-400" />
-                          <span className="text-[10px] font-bold text-teal-400/80 uppercase tracking-tight">Patient Traits</span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          {Object.entries(persona.patient).map(([k, v]) => (
-                            <div key={k} className="bg-slate-950/40 border border-slate-800/30 rounded-lg p-2">
-                              <div className="text-[9px] text-slate-500 uppercase leading-none mb-1">{k}</div>
-                              <div className="text-[10px] text-slate-300 font-medium leading-tight truncate">{v.replace(/_/g, ' ')}</div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      {/* Nurse */}
-                      <div>
-                        <div className="flex items-center gap-2 mb-2">
-                          <Activity className="w-3 h-3 text-blue-400" />
-                          <span className="text-[10px] font-bold text-blue-400/80 uppercase tracking-tight">Nurse Traits</span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          {Object.entries(persona.nurse).map(([k, v]) => (
-                            <div key={k} className="bg-slate-950/40 border border-slate-800/30 rounded-lg p-2">
-                              <div className="text-[9px] text-slate-500 uppercase leading-none mb-1">{k}</div>
-                              <div className="text-[10px] text-slate-300 font-medium leading-tight truncate">{v.replace(/_/g, ' ')}</div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
                   </div>
-                )}
-              </div>
-            </div>
 
-            {/* ---------------- Agents Area ---------------- */}
-            <div className="flex-1 relative p-8 overflow-hidden">
+                </div>
 
-              {/* Floating control pill (top-center) — minimal, fits the temp.jsx aesthetic */}
-              <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2">
-                {!running ? (
-                  <>
-                    <select
-                      value={phase}
-                      onChange={(e) => setPhase(Number(e.target.value))}
-                      className="bg-slate-900/80 border border-slate-800 text-slate-300 text-[11px] rounded-lg px-2.5 py-1.5 cursor-pointer focus:outline-none focus:border-indigo-500/50">
-                      <option value={1}>Phase 1 · Tool Mastery</option>
-                      <option value={2}>Phase 2 · Clinical Reasoning</option>
-                      <option value={3}>Phase 3 · Empathy + Chaos</option>
-                    </select>
-                    <button
-                      onClick={startCase}
-                      className="bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-semibold tracking-wider uppercase px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 shadow-[0_4px_12px_rgba(99,102,241,0.3)]">
-                      Start Case
-                    </button>
-                  </>
-                ) : (
-                  <div className="flex items-center gap-2 bg-slate-900/80 border border-slate-800 px-3 py-1.5 rounded-lg text-[11px] font-mono">
-                    <span className="text-slate-400">Phase <span className="text-slate-100">{phase}</span></span>
-                    <span className="text-slate-600">·</span>
-                    <span className="text-slate-400">Step <span className="text-slate-100">{stepCount}</span></span>
-                    <span className="text-slate-600">·</span>
-                    <span className={`font-bold ${totalReward > 0.01 ? 'text-emerald-400' : totalReward < -0.01 ? 'text-red-400' : 'text-slate-300'}`}>
-                      {totalReward >= 0 ? '+' : ''}{totalReward.toFixed(2)}
-                    </span>
-                    {outcome && (
-                      <>
-                        <span className="text-slate-600">·</span>
-                        <span className={`font-bold uppercase tracking-wider ${
-                          outcome === 'WIN' ? 'text-emerald-400' :
-                          outcome === 'AMA' ? 'text-amber-300' :
-                          'text-red-400'
-                        }`}>{outcome}</span>
-                      </>
-                    )}
-                    <button onClick={stopCase} className="ml-1 text-slate-500 hover:text-red-400 text-sm leading-none">×</button>
-                  </div>
-                )}
-              </div>
-
-              {/* Doctor: Top Left (Indigo) */}
-              <div className={`absolute top-20 left-16 w-[280px] bg-slate-900/90 backdrop-blur-xl rounded-2xl p-5 border shadow-lg transition-all duration-700 flex items-center gap-4 z-10
-                ${activeAgent === 'doctor' ? 'shadow-[0_8px_30px_rgba(99,102,241,0.15)] border-indigo-500/50 scale-105' : 'border-slate-800 hover:shadow-xl'}`}>
-                <div className="relative flex items-center justify-center w-12 h-12">
-                  <div className="z-10 relative bg-slate-800 rounded-full p-2 shadow-[0_2px_8px_rgba(0,0,0,0.2)] border border-slate-700 flex items-center justify-center w-full h-full">
-                    {activeAgent === 'doctor'
-                      ? <GlowingCircleAnimation colorClass="bg-indigo-400" />
-                      : <Stethoscope className="w-5 h-5 transition-all duration-700 text-slate-400" />}
-                  </div>
-                </div>
-                <div className="z-10">
-                  <h3 className="font-semibold text-slate-100 text-sm">Doctor</h3>
-                  <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wider mt-0.5">{activeAgent === 'doctor' ? 'Speaking...' : 'Attending Physician'}</p>
-                </div>
-                <div className="ml-auto flex items-center justify-center z-10">
-                  {activeAgent === 'doctor' ? (
-                    <div className="relative flex items-center justify-center w-3 h-3">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,1)]"></span>
-                    </div>
-                  ) : (
-                    <div className="w-2 h-2 rounded-full bg-slate-700" />
-                  )}
-                </div>
-              </div>
-
-              {/* Nurse: Bottom Left (Blue) */}
-              <div className={`absolute bottom-20 left-16 w-[280px] bg-slate-900/90 backdrop-blur-xl rounded-2xl p-5 border shadow-lg transition-all duration-700 flex items-center gap-4 z-10
-                ${activeAgent === 'nurse' ? 'shadow-[0_8px_30px_rgba(59,130,246,0.15)] border-blue-500/50 scale-105' : 'border-slate-800 hover:shadow-xl'}`}>
-                <div className="relative flex items-center justify-center w-12 h-12">
-                  <div className="z-10 relative bg-slate-800 rounded-full p-2 shadow-[0_2px_8px_rgba(0,0,0,0.2)] border border-slate-700 flex items-center justify-center w-full h-full">
-                    {activeAgent === 'nurse'
-                      ? <VoiceRecordAnimation colorClass="bg-blue-400" />
-                      : <Activity className="w-5 h-5 transition-all duration-700 text-slate-400" />}
-                  </div>
-                </div>
-                <div className="z-10">
-                  <h3 className="font-semibold text-slate-100 text-sm">Nurse</h3>
-                  <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wider mt-0.5">{activeAgent === 'nurse' ? 'Recording...' : 'Registered Nurse'}</p>
-                </div>
-                <div className="ml-auto flex items-center justify-center z-10">
-                  {activeAgent === 'nurse' ? (
-                    <div className="relative flex items-center justify-center w-3 h-3">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,1)]"></span>
-                    </div>
-                  ) : (
-                    <div className="w-2 h-2 rounded-full bg-slate-700" />
-                  )}
-                </div>
-              </div>
-
-              {/* Patient: Right Side (Teal) */}
-              <div className={`absolute top-1/2 -translate-y-1/2 right-16 w-[280px] bg-slate-900/90 backdrop-blur-xl rounded-2xl p-5 border shadow-lg transition-all duration-700 flex items-center gap-4 z-10
-                ${activeAgent === 'patient' ? 'shadow-[0_8px_30px_rgba(20,184,166,0.15)] border-teal-500/50 scale-105' : 'border-slate-800 hover:shadow-xl'}`}>
-                <div className="relative flex items-center justify-center w-12 h-12">
-                  <div className="z-10 relative bg-slate-800 rounded-full p-2 shadow-[0_2px_8px_rgba(0,0,0,0.2)] border border-slate-700 flex items-center justify-center w-full h-full">
-                    {activeAgent === 'patient'
-                      ? <GptVoiceAnimation colorClass="bg-teal-400" />
-                      : <User className="w-5 h-5 transition-all duration-700 text-slate-400" />}
-                  </div>
-                </div>
-                <div className="z-10">
-                  <h3 className="font-semibold text-slate-100 text-sm">Patient</h3>
-                  <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wider mt-0.5">{activeAgent === 'patient' ? 'Speaking...' : 'Visiting'}</p>
-                </div>
-                <div className="ml-auto flex items-center justify-center z-10">
-                  {activeAgent === 'patient' ? (
-                    <div className="relative flex items-center justify-center w-3 h-3">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-teal-500 shadow-[0_0_8px_rgba(20,184,166,1)]"></span>
-                    </div>
-                  ) : (
-                    <div className="w-2 h-2 rounded-full bg-slate-700" />
-                  )}
-                </div>
-              </div>
-
-              {/* Dialogue Transcript Log Console (Center) */}
-              <div className="absolute left-[360px] top-20 bottom-20 w-[260px] bg-slate-950/60 border border-slate-800/80 rounded-2xl p-4 flex flex-col justify-between shadow-inner z-10">
-                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 border-b border-slate-800 pb-1">Dialogue Transcript</div>
-                <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 pr-1">
-                  {conversation.map((msg, idx) => {
-                    const color = 
-                      msg.agent === 'doctor' ? 'text-indigo-400' :
-                      msg.agent === 'nurse' ? 'text-blue-400' :
-                      msg.agent === 'patient' ? 'text-teal-400' :
-                      'text-slate-500';
-                    return (
-                      <div key={idx} className="text-[11px] border-b border-slate-900/40 pb-1.5 last:border-0 last:pb-0 font-sans">
-                        <div className="flex items-center gap-1 font-mono text-[9px] font-bold">
-                          <span className={color}>{msg.agent.toUpperCase()}</span>
-                          <span className="text-slate-600 font-normal">→</span>
-                          <span className="text-slate-500">{msg.target ? msg.target.toUpperCase() : 'ALL'}</span>
-                        </div>
-                        <div className="text-slate-300 mt-0.5 leading-relaxed font-medium">
-                          {msg.message}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <div ref={chatEndRef} />
-                </div>
               </div>
 
             </div>
+
           </div>
         </div>
       );

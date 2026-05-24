@@ -117,8 +117,15 @@ def print_doctor(action_str: str, step: int):
         print(f"    Says:     \"{a.get('message', '')}\"", flush=True)
     elif tool == "order_lab":
         print(f"    Lab:      {a.get('test_name', '')}", flush=True)
+    elif tool == "read_soap":
+        print(f"    Section:  {a.get('section', '')}", flush=True)
+    elif tool == "update_soap":
+        print(f"    Section:  {a.get('section', '')}", flush=True)
+        print(f"    Content:  {a.get('content', '')[:120]}", flush=True)
     elif tool == "terminal_discharge":
         print(f"    Treatment: {a.get('treatment', '')}", flush=True)
+    else:
+        print(f"    Action:   {action_str[:100]}", flush=True)
 
 
 def print_obs(obs_str: str):
@@ -146,6 +153,17 @@ def print_obs(obs_str: str):
     elif event == "lab_result":
         dup = " (DUPLICATE!)" if obs.get("redundant") else ""
         print(f"  LAB [{obs.get('test_name','')}]{dup}: {obs.get('result','')[:120]}", flush=True)
+    elif event == "soap_read":
+        print(f"  EMR: Read SOAP note (section: {obs.get('section','')})", flush=True)
+        content = obs.get("content", "")
+        if isinstance(content, dict):
+            snippet = ", ".join(f"{k}: {str(v)[:30]}" for k, v in content.items())
+            print(f"    Content: {snippet[:120]}", flush=True)
+        else:
+            print(f"    Content: {str(content)[:120]}", flush=True)
+    elif event == "soap_updated":
+        print(f"  EMR: SOAP note updated (section: {obs.get('section','')})", flush=True)
+        print(f"    Message: {obs.get('message','')[:120]}", flush=True)
     elif event == "terminal_win":
         print(f"  >>> CORRECT DIAGNOSIS! Patient stabilized! <<<", flush=True)
     elif event == "terminal_fatal":
@@ -154,6 +172,8 @@ def print_obs(obs_str: str):
         print(f"  >>> WRONG treatment! Correct: {obs.get('correct_treatment','')} <<<", flush=True)
     elif event == "terminal_ama":
         print(f"  >>> PATIENT LEFT AMA: \"{obs.get('patient_message','')}\" <<<", flush=True)
+    else:
+        print(f"  ENV EVENT: {event} -> {obs_str[:120]}", flush=True)
 
 
 # ---------------------------------------------------------------------------
