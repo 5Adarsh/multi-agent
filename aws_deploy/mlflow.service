@@ -1,0 +1,15 @@
+[Unit]
+Description=MLflow Tracking Server
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/path/to/repo
+Environment="PYTHONIOENCODING=utf-8"
+ExecStart=/home/ubuntu/ermap_venv/bin/mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:///mlflow.db
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

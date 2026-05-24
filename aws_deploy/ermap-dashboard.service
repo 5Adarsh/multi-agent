@@ -1,0 +1,17 @@
+[Unit]
+Description=ER-MAP Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/path/to/repo
+Environment="PYTHONIOENCODING=utf-8"
+Environment="FLASK_RUN_PORT=5050"
+Environment="PORT=5050"
+ExecStart=/home/ubuntu/ermap_venv/bin/python -m ER_MAP.dashboard
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
