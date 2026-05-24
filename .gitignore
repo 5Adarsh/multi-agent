@@ -67,3 +67,20 @@ kaggle/working/
 .huggingface/
 wandb/
 .cache/
+
+# --------------------------------------------------------------------
+# Large binaries & runtime data (must not be pushed to GitHub)
+# --------------------------------------------------------------------
+# Jenkins WAR (~91 MB, exceeds GitHub 100 MB limit)
+jenkins.war
+
+# MLflow local database and run artifacts (regenerable)
+mlflow.db
+mlruns/
+
+# Large model files (safetensors, bin) that exceed GitHub limits
+*.safetensors
+*.bin
+
+# Test config (local-only)
+test_config.json

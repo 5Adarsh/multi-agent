@@ -41,6 +41,7 @@ Usage (local dry-run, no GPU):
 """
 
 import os
+os.environ["PYTHONIOENCODING"] = "utf-8"
 import gc
 import json
 import math
@@ -1076,7 +1077,7 @@ def train(
             )
             if promoted:
                 logger.info(
-                    f"  >>> PROMOTED to Phase {scheduler.phase_id}: "
+                    f"  PROMOTED to Phase {scheduler.phase_id}: "
                     f"{scheduler.current_phase.name}"
                 )
 
@@ -1386,11 +1387,11 @@ def train(
             logger.error(f"  Post-training inference smoke test FAILED: {e}")
 
     logger.info(f"\n{'=' * 60}")
-    logger.info(f"  TRAINING COMPLETE")
-    logger.info(f"  Total episodes: {episode_idx}")
-    logger.info(f"  Total time: {total_time / 60:.1f} minutes")
-    logger.info(f"  Final phase: {scheduler.current_phase.name}")
-    logger.info(f"  Metrics: {metrics_path}")
+    logger.info("TRAINING COMPLETE")
+    logger.info(f"Total episodes: {episode_idx}")
+    logger.info(f"Total time: {total_time / 60:.1f} minutes")
+    logger.info(f"Final phase: {scheduler.current_phase.name}")
+    logger.info(f"Metrics saved: {metrics_path}")
     logger.info(f"{'=' * 60}")
 
     if not dry_run:
@@ -1413,10 +1414,15 @@ def train(
                     mlflow.log_artifacts(adapter_dir, artifact_path="final_lora")
                 if os.path.exists(merged_dir):
                     mlflow.log_artifacts(merged_dir, artifact_path="final_merged_fp16")
+        except Exception as e:
+            logger.warning(f"Failed to log final artifacts to MLflow: {e}")
+        # Safely end MLflow run regardless of artifact logging outcome
+        try:
+            import mlflow
             mlflow.end_run()
             logger.info("MLflow run ended successfully.")
         except Exception as e:
-            logger.warning(f"Failed to finalize MLflow run: {e}")
+            print("MLflow finalize warning:", e)
 
     return metrics_log
 

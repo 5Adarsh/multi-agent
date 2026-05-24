@@ -1,0 +1,21 @@
+# Ansible Deployment Variables for ER-MAP
+
+# Repository & Directory Setup
+app_dir: "/opt/er-map"
+git_repo: "https://github.com/5Adarsh/multi-agent.git"
+git_branch: "main"
+
+# Docker Configuration
+docker_image_name: "ermap-env"
+docker_image_tag: "latest"
+docker_container_name: "ermap-server"
+app_port: 7860
+
+# API Keys & Environments
+# IMPORTANT: Override this in your playbook command using --extra-vars or ansible-vault
+groq_api_key: "placeholder_replace_with_actual_key"
+
+# MLflow Centralized Server Settings (used when setting up remote MLflow tracker)
+mlflow_port: 5000
+mlflow_db_dir: "/var/lib/mlflow"
+mlflow_artifact_dir: "/var/lib/mlflow/artifacts"

@@ -1,0 +1,115 @@
+---
+- name: Setup MLflow Tracking Server
+  hosts: mlflow
+  become: true
+  vars_files:
+    - vars/default.yaml
+
+  tasks:
+    - name: Update apt package cache (Ubuntu/Debian)
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+
+    - name: Install system dependencies
+      package:
+        name:
+          - git
+          - docker.io
+          - nginx
+          - python3-pip
+        state: present
+
+    - name: Ensure docker service is running and enabled
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Install docker-py python library for Ansible Docker modules
+      pip:
+        name: docker
+        state: present
+
+    - name: Create local directories for MLflow backend store and artifacts
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0777'
+      loop:
+        - "{{ mlflow_db_dir }}"
+        - "{{ mlflow_artifact_dir }}"
+
+    - name: Start MLflow Server Container
+      docker_container:
+        name: mlflow-tracking-server
+        image: ghcr.io/mlflow/mlflow:latest
+        state: started
+        restart_policy: always
+        recreate: yes
+        ports:
+          - "{{ mlflow_port }}:5000"
+        volumes:
+          - "{{ mlflow_db_dir }}:/mlflow_data"
+          - "{{ mlflow_artifact_dir }}:/artifacts"
+        command: >
+          mlflow server
+          --host 0.0.0.0
+          --port 5000
+          --backend-store-uri sqlite:////mlflow_data/mlflow.db
+          --default-artifact-root /artifacts
+
+    - name: Configure Nginx reverse proxy for MLflow UI
+      copy:
+        content: |
+          server {
+              listen 80;
+              server_name _;
+
+              location / {
+                  proxy_pass http://127.0.0.1:{{ mlflow_port }};
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }
+          }
+        dest: /etc/nginx/sites-available/mlflow
+        mode: '0644'
+      notify: Restart Nginx
+
+    - name: Disable Nginx default site configuration
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: Restart Nginx
+
+    - name: Enable Nginx MLflow site configuration
+      file:
+        src: /etc/nginx/sites-available/mlflow
+        dest: /etc/nginx/sites-enabled/mlflow
+        state: link
+      notify: Restart Nginx
+
+    - name: Health check MLflow UI
+      uri:
+        url: "http://127.0.0.1:{{ mlflow_port }}/"
+        status_code: 200
+      register: mlflow_health
+      until: "mlflow_health.status == 200"
+      retries: 5
+      delay: 5
+
+    - name: Log setup completion
+      debug:
+        msg: "MLflow Tracking Server is running at http://localhost:80 (internal port {{ mlflow_port }})"
+
+  handlers:
+    - name: Restart Nginx
+      systemd:
+        name: nginx
+        state: restarted
+
