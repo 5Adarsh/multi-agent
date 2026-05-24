@@ -981,12 +981,20 @@ HTML_PAGE = r"""<!DOCTYPE html>
       const [currentPhase, setCurrentPhase]   = useState(null);
       const [outcome, setOutcome]             = useState(null);
       const [persona, setPersona]             = useState(null);
+      const [conversation, setConversation]   = useState([]);
 
       // refs (audio + loop control — never trigger re-render)
       const audioQueueRef    = useRef([]);
       const isPlayingRef     = useRef(false);
       const renderedCountRef = useRef(0);
       const stopRef          = useRef(false);
+      const chatEndRef       = useRef(null);
+
+      useEffect(() => {
+        if (chatEndRef.current) {
+          chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+      }, [conversation]);
 
       // ---------------- Audio queue (drives card activation) ----------------
       const processQueue = useCallback(async () => {
@@ -1073,6 +1081,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           });
           const data = await res.json();
           setPersona(data.persona);
+          setConversation(data.conversation || []);
           renderedCountRef.current = (data.conversation || []).length;
         } catch (e) {
           console.error('new_episode failed', e);
@@ -1122,6 +1131,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           if (stepData.reward_components) setRewardComponents(stepData.reward_components);
           if (stepData.phases_done)        setPhasesDone(stepData.phases_done);
           if (stepData.current_phase !== undefined) setCurrentPhase(stepData.current_phase);
+          setConversation(stepData.conversation || []);
 
           if (stepData.done) {
             await waitForAudioDrained();
@@ -1401,6 +1411,33 @@ HTML_PAGE = r"""<!DOCTYPE html>
                   ) : (
                     <div className="w-2 h-2 rounded-full bg-slate-700" />
                   )}
+                </div>
+              </div>
+
+              {/* Dialogue Transcript Log Console (Center) */}
+              <div className="absolute left-[360px] top-20 bottom-20 w-[260px] bg-slate-950/60 border border-slate-800/80 rounded-2xl p-4 flex flex-col justify-between shadow-inner z-10">
+                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 border-b border-slate-800 pb-1">Dialogue Transcript</div>
+                <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 pr-1">
+                  {conversation.map((msg, idx) => {
+                    const color = 
+                      msg.agent === 'doctor' ? 'text-indigo-400' :
+                      msg.agent === 'nurse' ? 'text-blue-400' :
+                      msg.agent === 'patient' ? 'text-teal-400' :
+                      'text-slate-500';
+                    return (
+                      <div key={idx} className="text-[11px] border-b border-slate-900/40 pb-1.5 last:border-0 last:pb-0 font-sans">
+                        <div className="flex items-center gap-1 font-mono text-[9px] font-bold">
+                          <span className={color}>{msg.agent.toUpperCase()}</span>
+                          <span className="text-slate-600 font-normal">→</span>
+                          <span className="text-slate-500">{msg.target ? msg.target.toUpperCase() : 'ALL'}</span>
+                        </div>
+                        <div className="text-slate-300 mt-0.5 leading-relaxed font-medium">
+                          {msg.message}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div ref={chatEndRef} />
                 </div>
               </div>
 
