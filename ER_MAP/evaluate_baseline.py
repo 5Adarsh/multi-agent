@@ -254,13 +254,45 @@ def print_phase_summary(phase: int, results: List[Dict[str, Any]]) -> None:
     print("=" * 70, flush=True)
 
     # MLflow logging
-    mlflow.set_experiment("ER-MAP_Baseline_Evaluation")
-    with mlflow.start_run(run_name=f"Phase_{phase}_{_phase_name(phase).replace(' ', '_')}"):
-        mlflow.log_metric("win_rate", wins / n)
-        mlflow.log_metric("ama_rate", ama / n)
-        mlflow.log_metric("fatal_rate", wrong / n)
-        mlflow.log_metric("avg_reward", avg_r)
-        mlflow.log_metric("avg_steps", avg_s)
+    try:
+        # Configure fast timeouts for MLflow connection requests to prevent hanging in CI environments
+        if "MLFLOW_HTTP_REQUEST_TIMEOUT" not in os.environ:
+            os.environ["MLFLOW_HTTP_REQUEST_TIMEOUT"] = "2"
+        if "MLFLOW_HTTP_REQUEST_MAX_RETRIES" not in os.environ:
+            os.environ["MLFLOW_HTTP_REQUEST_MAX_RETRIES"] = "0"
+
+        resolved_uri = os.environ.get("MLFLOW_TRACKING_URI") or "http://127.0.0.1:5000"
+
+        # Check if URI is an HTTP/HTTPS endpoint and if it's reachable
+        if resolved_uri.startswith("http://") or resolved_uri.startswith("https://"):
+            import socket
+            from urllib.parse import urlparse
+            parsed = urlparse(resolved_uri)
+            host = parsed.hostname or "127.0.0.1"
+            port = parsed.port or (80 if parsed.scheme == "http" else 443)
+            try:
+                # Quick socket connection check with a 1-second timeout
+                with socket.create_connection((host, port), timeout=1.0):
+                    pass
+            except (socket.timeout, ConnectionRefusedError, OSError) as conn_err:
+                print(
+                    f"  Warning: MLflow tracking server at {resolved_uri} is unreachable ({conn_err}). "
+                    f"Falling back to local SQLite database (sqlite:///mlflow.db) to ensure logging runs successfully.",
+                    flush=True
+                )
+                resolved_uri = "sqlite:///mlflow.db"
+
+        mlflow.set_tracking_uri(resolved_uri)
+        mlflow.set_experiment("ER-MAP_Baseline_Evaluation")
+        with mlflow.start_run(run_name=f"Phase_{phase}_{_phase_name(phase).replace(' ', '_')}"):
+            mlflow.log_metric("win_rate", wins / n)
+            mlflow.log_metric("ama_rate", ama / n)
+            mlflow.log_metric("fatal_rate", wrong / n)
+            mlflow.log_metric("avg_reward", avg_r)
+            mlflow.log_metric("avg_steps", avg_s)
+        print("  MLflow logging completed successfully.", flush=True)
+    except Exception as e:
+        print(f"  Warning: MLflow logging failed: {e}. Continuing without logging.", flush=True)
 
 
 # ---------------------------------------------------------------------------

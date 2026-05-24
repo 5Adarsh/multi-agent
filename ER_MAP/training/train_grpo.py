@@ -715,6 +715,10 @@ def train(
     learning_rate: float = 5e-6,
     kl_beta: float = 0.04,
     use_wandb: bool = False,
+    use_mlflow: bool = False,
+    mlflow_tracking_uri: Optional[str] = None,
+    mlflow_experiment_name: str = "ER-MAP-GRPO",
+    mlflow_run_name: Optional[str] = None,
     output_dir: str = "./er_map_grpo_checkpoints",
     dry_run: bool = False,
     *,
@@ -837,6 +841,59 @@ def train(
             )
         except Exception as e:
             logger.warning(f"W&B init failed: {e}. Continuing without it.")
+
+    # --- MLflow ---
+    mlflow_run = None
+    if use_mlflow:
+        try:
+            import mlflow
+            # Configure fast timeouts for MLflow connection requests to prevent hanging in CI environments
+            if "MLFLOW_HTTP_REQUEST_TIMEOUT" not in os.environ:
+                os.environ["MLFLOW_HTTP_REQUEST_TIMEOUT"] = "2"
+            if "MLFLOW_HTTP_REQUEST_MAX_RETRIES" not in os.environ:
+                os.environ["MLFLOW_HTTP_REQUEST_MAX_RETRIES"] = "0"
+
+            # Resolve tracking URI (cli -> environment -> local server default)
+            resolved_uri = mlflow_tracking_uri or os.environ.get("MLFLOW_TRACKING_URI") or "http://127.0.0.1:5000"
+
+            # Check if URI is an HTTP/HTTPS endpoint and if it's reachable
+            if resolved_uri.startswith("http://") or resolved_uri.startswith("https://"):
+                import socket
+                from urllib.parse import urlparse
+                parsed = urlparse(resolved_uri)
+                host = parsed.hostname or "127.0.0.1"
+                port = parsed.port or (80 if parsed.scheme == "http" else 443)
+                try:
+                    # Quick socket connection check with a 1-second timeout
+                    with socket.create_connection((host, port), timeout=1.0):
+                        pass
+                except (socket.timeout, ConnectionRefusedError, OSError) as conn_err:
+                    logger.warning(
+                        f"MLflow tracking server at {resolved_uri} is unreachable ({conn_err}). "
+                        f"Falling back to local SQLite database (sqlite:///mlflow.db) to ensure logging runs successfully."
+                    )
+                    resolved_uri = "sqlite:///mlflow.db"
+
+            mlflow.set_tracking_uri(resolved_uri)
+            mlflow.set_experiment(mlflow_experiment_name)
+            mlflow_run = mlflow.start_run(run_name=mlflow_run_name)
+            mlflow.log_params({
+                "model_name": model_name,
+                "num_episodes": num_episodes,
+                "group_size": group_size,
+                "learning_rate": learning_rate,
+                "kl_beta": kl_beta,
+                "early_stop": early_stop,
+                "convergence_window": convergence_window,
+                "phase1_target": phase_reward_targets.get(1),
+                "phase2_target": phase_reward_targets.get(2),
+                "phase3_target": phase_reward_targets.get(3),
+                "fixed_budget_mode": fixed_budget_mode,
+                "dry_run": dry_run,
+            })
+            logger.info("MLflow run started and hyperparameters logged.")
+        except Exception as e:
+            logger.warning(f"MLflow init failed: {e}. Continuing without it.")
 
     # --- Environment ---
     from ER_MAP.envs.triage_env import TriageEnv
@@ -1015,6 +1072,25 @@ def train(
                 "episode_time_s": round(ep_time, 1),
             })
 
+            if use_mlflow and mlflow_run:
+                try:
+                    import mlflow
+                    mlflow.log_metrics({
+                        "episode/raw_reward": float(trajectory["total_reward"]),
+                        "episode/verified_reward": float(verified),
+                        "episode/steps": float(trajectory["steps"]),
+                        "episode/patient_trust": float(trajectory.get("patient_state", {}).get("trust") or 50.0),
+                        "episode/time_s": float(ep_time),
+                        "curriculum/rolling_win_rate": float(sched_summary["rolling_win_rate"]),
+                        "curriculum/rolling_avg_reward": float(sched_summary["rolling_avg_reward"]),
+                        "curriculum/phase_id": float(sched_summary["phase"]),
+                    }, step=episode_idx)
+                    if comp:
+                        comp_metrics = {f"component/{k}": float(v) for k, v in comp.items() if v is not None}
+                        mlflow.log_metrics(comp_metrics, step=episode_idx)
+                except Exception as e:
+                    logger.warning(f"Failed to log episode metrics to MLflow: {e}")
+
         # In dry-run we don't actually run a GRPO step, but we still
         # synthesize plausible update stats so the per-phase plotter has
         # something to render during development / smoke tests.
@@ -1030,6 +1106,21 @@ def train(
                 "n_steps":      sum(t["steps"] for t in trajectories),
                 "skipped":      False,
             }
+            if use_mlflow and mlflow_run:
+                try:
+                    import mlflow
+                    stats = metrics_log[-1]["grpo_update"]
+                    mlflow.log_metrics({
+                        "grpo/loss": float(stats["loss"]),
+                        "grpo/kl": float(stats["kl"]),
+                        "grpo/adv_mean": float(stats["adv_mean"]),
+                        "grpo/adv_std": float(stats["adv_std"]),
+                        "grpo/rewards_mean": float(stats["rewards_mean"]),
+                        "grpo/rewards_std": float(stats["rewards_std"]),
+                        "grpo/n_steps": float(stats["n_steps"]),
+                    }, step=episode_idx)
+                except Exception as e:
+                    logger.warning(f"Failed to log dry-run GRPO update to MLflow: {e}")
 
         # --- GRPO update over the group ---
         if not dry_run and trajectories:
@@ -1084,6 +1175,20 @@ def train(
                         "rolling_win_rate": scheduler.get_summary()["rolling_win_rate"],
                         "rolling_avg_reward": scheduler.get_summary()["rolling_avg_reward"],
                     })
+                if use_mlflow and mlflow_run:
+                    try:
+                        import mlflow
+                        mlflow.log_metrics({
+                            "grpo/loss": float(stats.get("loss", 0.0)),
+                            "grpo/kl": float(stats.get("kl", 0.0)),
+                            "grpo/adv_mean": float(stats.get("advantages_mean", 0.0)),
+                            "grpo/adv_std": float(stats.get("advantages_std", 0.0)),
+                            "grpo/rewards_mean": float(stats.get("rewards_mean", 0.0)),
+                            "grpo/rewards_std": float(stats.get("rewards_std", 0.0)),
+                            "grpo/n_steps": float(stats.get("n_steps", 0)),
+                        }, step=episode_idx)
+                    except Exception as e:
+                        logger.warning(f"Failed to log GRPO update to MLflow: {e}")
             except Exception as e:
                 logger.error(f"  GRPO update failed: {e}")
                 # Best-effort recovery: drop graphs/cache so the next group
@@ -1255,6 +1360,25 @@ def train(
     if wandb_run:
         wandb_run.finish()
 
+    if use_mlflow and mlflow_run:
+        try:
+            import mlflow
+            # Log final metrics file
+            if os.path.exists(metrics_path):
+                mlflow.log_artifact(metrics_path, artifact_path="metrics")
+            # Log final merged model / checkpoints if not dry run
+            if not dry_run:
+                adapter_dir = os.path.join(output_dir, "final_lora")
+                merged_dir = os.path.join(output_dir, "final_merged_fp16")
+                if os.path.exists(adapter_dir):
+                    mlflow.log_artifacts(adapter_dir, artifact_path="final_lora")
+                if os.path.exists(merged_dir):
+                    mlflow.log_artifacts(merged_dir, artifact_path="final_merged_fp16")
+            mlflow.end_run()
+            logger.info("MLflow run ended successfully.")
+        except Exception as e:
+            logger.warning(f"Failed to finalize MLflow run: {e}")
+
     return metrics_log
 
 
@@ -1276,6 +1400,10 @@ if __name__ == "__main__":
     parser.add_argument("--lr", type=float, default=5e-6, help="Learning rate")
     parser.add_argument("--kl-beta", type=float, default=0.04, help="KL coefficient")
     parser.add_argument("--wandb", action="store_true", help="Log to W&B")
+    parser.add_argument("--mlflow", action="store_true", help="Log to MLflow")
+    parser.add_argument("--mlflow-uri", type=str, default=None, help="MLflow tracking URI")
+    parser.add_argument("--mlflow-experiment", type=str, default="ER-MAP-GRPO", help="MLflow experiment name")
+    parser.add_argument("--mlflow-run-name", type=str, default=None, help="MLflow run name")
     parser.add_argument("--output-dir", type=str,
                         default="./er_map_grpo_checkpoints", help="Output dir")
     parser.add_argument("--dry-run", action="store_true", help="Test scheduler without model")
@@ -1288,7 +1416,7 @@ if __name__ == "__main__":
     parser.add_argument("--phase3-target", type=float, default=1.0,
                         help="Phase 3 sustained rolling-avg-reward bar (END TRAINING when met)")
     parser.add_argument("--phase-min-win-rate", type=float, default=0.20,
-                        help="Soft floor on rolling win rate (sanity check, default 20%)")
+                        help="Soft floor on rolling win rate (sanity check, default 20%%)")
     parser.add_argument("--convergence-window", type=int, default=3,
                         help="How many consecutive GRPO groups must meet target (default 3)")
     parser.add_argument("--no-early-stop", action="store_true",
@@ -1322,6 +1450,10 @@ if __name__ == "__main__":
         learning_rate=args.lr,
         kl_beta=args.kl_beta,
         use_wandb=args.wandb,
+        use_mlflow=args.mlflow,
+        mlflow_tracking_uri=args.mlflow_uri,
+        mlflow_experiment_name=args.mlflow_experiment,
+        mlflow_run_name=args.mlflow_run_name,
         output_dir=args.output_dir,
         dry_run=args.dry_run,
         phase_reward_targets={
