@@ -1,36 +1,37 @@
 #!/bin/bash
-# AWS EC2 Ubuntu 22.04 Setup Script for ER-MAP Stack
-# Run this script as root or with sudo: sudo bash setup_ec2.sh
+# AWS EC2 Amazon Linux 2023 Setup Script for ER-MAP Stack
+# Run this script as root or with sudo: sudo bash aws_deploy/setup_ec2.sh
 
 set -e
 
 echo "=========================================="
-echo " Starting EC2 ER-MAP Stack Setup"
+echo " Starting EC2 ER-MAP Stack Setup (Amazon Linux 2023)"
 echo "=========================================="
 
 # 1. Update and install system dependencies
 echo ">>> Installing System Dependencies..."
-apt-get update -y
-apt-get install -y python3 python3-pip python3-venv openjdk-17-jre git curl wget
+dnf update -y
+dnf install -y python3 python3-pip git curl wget tar
 
-# 2. Install Jenkins
+# 2. Install Java 17 (Corretto is the default on AL2023)
+echo ">>> Installing Java 17..."
+dnf install -y java-17-amazon-corretto
+
+# 3. Install Jenkins
 echo ">>> Installing Jenkins..."
-# Add Jenkins key and repository
-curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | tee /usr/share/keyrings/jenkins-keyring.asc > /dev/null
-echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/ | tee /etc/apt/sources.list.d/jenkins.list > /dev/null
+wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat-stable/jenkins.repo
+rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
 
-apt-get update -y
-apt-get install -y jenkins
+dnf install -y jenkins
 
 # Ensure Jenkins runs on port 8080 (default)
 systemctl enable jenkins
 systemctl start jenkins
 
-# 3. Setup Python Virtual Environment and Install Dependencies
+# 4. Setup Python Virtual Environment and Install Dependencies
 echo ">>> Setting up Python Virtual Environment..."
-# Assuming we run this from inside the repo root directory, let's use the repo path
 REPO_DIR=$(pwd)
-VENV_DIR="/home/ubuntu/ermap_venv"
+VENV_DIR="/home/ec2-user/ermap_venv"
 
 if [ ! -d "$VENV_DIR" ]; then
     python3 -m venv $VENV_DIR
@@ -43,16 +44,20 @@ $VENV_DIR/bin/pip install --upgrade pip
 # Install required packages for MLflow, ER-MAP Dashboard, and GRPO training
 $VENV_DIR/bin/pip install transformers peft accelerate datasets flask mlflow scikit-learn pandas numpy sentencepiece
 
-# 4. Setup Systemd Services for MLflow and Dashboard
+# 5. Setup Systemd Services for MLflow and Dashboard
 echo ">>> Configuring Systemd Services..."
 
 # Copy service files to systemd directory
 cp aws_deploy/mlflow.service /etc/systemd/system/
 cp aws_deploy/ermap-dashboard.service /etc/systemd/system/
 
-# Update paths in service files to point to actual repo directory
+# Fix user and paths in service files to point to actual repo directory
 sed -i "s|/path/to/repo|$REPO_DIR|g" /etc/systemd/system/mlflow.service
 sed -i "s|/path/to/repo|$REPO_DIR|g" /etc/systemd/system/ermap-dashboard.service
+sed -i "s|User=ubuntu|User=ec2-user|g" /etc/systemd/system/mlflow.service
+sed -i "s|User=ubuntu|User=ec2-user|g" /etc/systemd/system/ermap-dashboard.service
+sed -i "s|/home/ubuntu|/home/ec2-user|g" /etc/systemd/system/mlflow.service
+sed -i "s|/home/ubuntu|/home/ec2-user|g" /etc/systemd/system/ermap-dashboard.service
 
 # Reload systemd and start services
 systemctl daemon-reload

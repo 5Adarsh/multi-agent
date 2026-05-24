@@ -16,7 +16,7 @@ This job runs the lightweight demo GRPO training pipeline on CPU.
 5. Paste the following command:
    ```bash
    cd /path/to/repo  # Update this to the actual repository path
-   source /home/ubuntu/ermap_venv/bin/activate
+   source /home/ec2-user/ermap_venv/bin/activate
    export PYTHONIOENCODING=utf-8
    export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
    python3 -m ER_MAP.training.train_grpo --model distilgpt2 --episodes 1
@@ -33,7 +33,7 @@ This job runs the standalone, high-accuracy Random Forest classifier on the Iris
 5. Paste the following command:
    ```bash
    cd /path/to/repo  # Update this to the actual repository path
-   source /home/ubuntu/ermap_venv/bin/activate
+   source /home/ec2-user/ermap_venv/bin/activate
    export PYTHONIOENCODING=utf-8
    export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
    python3 iris_mlflow_demo.py
