@@ -354,7 +354,6 @@ def _smart_fallback_action(history: list) -> dict:
     Doctor has already done, then advances to the next missing stage.
     """
     done_tools = set()
-    last_lab = None
     for msg in history:
         if msg.get("role") != "assistant":
             continue
@@ -363,8 +362,6 @@ def _smart_fallback_action(history: list) -> dict:
             tool = obj.get("tool", "")
             if tool:
                 done_tools.add(tool)
-            if tool == "order_lab":
-                last_lab = obj.get("test_name", last_lab)
         except (json.JSONDecodeError, TypeError):
             continue
 
@@ -402,14 +399,31 @@ def _smart_fallback_action(history: list) -> dict:
                 "and reassessment of vitals."
             ),
         }
+    
+    # Check if we also updated the Plan section before discharging
+    has_plan_update = False
+    for msg in history:
+        if msg.get("role") != "assistant":
+            continue
+        try:
+            obj = json.loads(msg.get("content", "") or "{}")
+            if obj.get("tool") == "update_soap" and obj.get("section") == "Plan":
+                has_plan_update = True
+        except:
+            pass
+
+    if not has_plan_update:
+        return {
+            "thought": "Local fallback: document treatment plan before discharge.",
+            "tool": "update_soap",
+            "section": "Plan",
+            "content": "Empirical treatment plan: supportive care, IV fluids, and monitoring.",
+        }
+
     return {
-        "thought": "Local fallback: ask nurse for an updated vitals check.",
-        "tool": "speak_to",
-        "target": "nurse",
-        "message": (
-            "Nurse, please give me a current vitals check — HR, BP, RR, SpO2, temp — "
-            "and let me know if there has been any change in the patient's status."
-        ),
+        "thought": "Local fallback: discharge patient to terminate case.",
+        "tool": "terminal_discharge",
+        "treatment": "Empirical care plan: supportive care, IV fluids, close observation, and follow-up.",
     }
 
 
@@ -482,7 +496,7 @@ class DoctorBrain:
             self.history = [self.history[0]] + self.history[-16:]
 
         resp = ""
-        # Walk the key chain in order; on auth failure mark dead and try next.
+        # Walk the key chain in order; on auth or rate failure mark dead/bypass and try next.
         for idx, entry in enumerate(self._chain):
             if entry["dead"]:
                 continue
@@ -491,17 +505,20 @@ class DoctorBrain:
                 if resp:
                     break
             except Exception as e:
-                if self._is_auth_error(e):
+                msg = str(e).lower()
+                is_rate_limit = "429" in msg or "rate" in msg
+                if self._is_auth_error(e) or is_rate_limit:
                     entry["dead"] = True
                     masked = entry["key"][:8] + "..." + entry["key"][-4:] if len(entry["key"]) > 14 else "***"
+                    err_type = "rate-limit" if is_rate_limit else "auth"
                     print(
-                        f"  [DOCTOR] key #{idx + 1} ({masked}) returned auth error; "
+                        f"  [DOCTOR] key #{idx + 1} ({masked}) returned {err_type} error; "
                         f"trying next fallback in the chain.",
                         flush=True,
                     )
                     continue
                 print(f"  [DOCTOR] live call failed (key #{idx + 1}): {e}", flush=True)
-                break  # non-auth → don't burn the rest of the chain
+                break  # general network / unknown error → don't burn the rest of the chain
 
         # If we still have nothing, pick a smart local fallback action
         # (read_soap → speak_to → order_lab → update_soap → status check)
@@ -654,11 +671,24 @@ def step():
         action_str = json.dumps(action)
 
     # Log doctor action
+    tool = action.get("tool", "speak_to")
+    message = action.get("message", "")
+    if tool == "read_soap":
+        message = f"Read SOAP note (section: {action.get('section', 'ALL')})"
+    elif tool == "update_soap":
+        message = f"Update SOAP note (section: {action.get('section', '')}) to:\n{action.get('content', '')}"
+    elif tool == "order_lab":
+        message = f"Order lab: {action.get('test_name', '')}"
+    elif tool == "terminal_discharge":
+        message = f"Discharge patient with plan: {action.get('treatment', '')}"
+    elif tool == "speak_to":
+        message = action.get("message", "")
+
     EPISODE_STATE["conversation"].append({
         "agent": "doctor",
-        "type": action.get("tool", "speak_to"),
+        "type": tool,
         "target": action.get("target", ""),
-        "message": action.get("message", action.get("treatment", action.get("test_name", ""))),
+        "message": message,
         "thought": action.get("thought", ""),
     })
 
@@ -734,9 +764,12 @@ def step():
                         "status": ex.get("patient_status", ""),
                     })
                 elif "nurse_action" in ex:
+                    action_type = ex.get("nurse_action", "")
+                    # Vitals check is meant for the doctor
+                    target = "doctor" if action_type == "check_vitals" else "patient"
                     EPISODE_STATE["conversation"].append({
-                        "agent": "nurse", "type": ex.get("nurse_action", ""),
-                        "target": "patient",
+                        "agent": "nurse", "type": action_type,
+                        "target": target,
                         "message": ex.get("result", ex.get("reason", "")),
                         "thought": None,
                     })
@@ -762,6 +795,34 @@ def step():
                 "agent": "system", "type": "lab_result",
                 "message": f"[{obs_data.get('test_name','')}] {obs_data.get('result','')}",
                 "thought": None, "redundant": obs_data.get("redundant", False),
+            })
+
+        elif event == "soap_read":
+            content = obs_data.get("content", "")
+            if isinstance(content, dict):
+                lines = []
+                for k, v in content.items():
+                    if isinstance(v, dict):
+                        sub_lines = []
+                        for sk, sv in v.items():
+                            sub_lines.append(f"  • {sk}: {sv}")
+                        lines.append(f"{k}:\n" + "\n".join(sub_lines))
+                    else:
+                        lines.append(f"{k}: {v}")
+                msg_text = f"Read SOAP EMR (section={obs_data.get('section','')}). Content:\n\n" + "\n\n".join(lines)
+            else:
+                msg_text = f"Read SOAP EMR (section={obs_data.get('section','')}). Content: {content}"
+            EPISODE_STATE["conversation"].append({
+                "agent": "system", "type": "soap_read",
+                "message": msg_text,
+                "thought": None,
+            })
+
+        elif event == "soap_updated":
+            EPISODE_STATE["conversation"].append({
+                "agent": "system", "type": "soap_updated",
+                "message": f"SOAP note updated (section={obs_data.get('section','')}). {obs_data.get('message','')}",
+                "thought": None,
             })
 
         elif "terminal" in event:
@@ -979,6 +1040,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
       const [outcome, setOutcome]             = useState(null);
       const [persona, setPersona]             = useState(null);
       const [conversation, setConversation]   = useState([]);
+      const [useVoice, setUseVoice]           = useState(false); // default to false for fast simulation without audio blocks
 
       const audioQueueRef    = useRef([]);
       const isPlayingRef     = useRef(false);
@@ -1038,13 +1100,18 @@ HTML_PAGE = r"""<!DOCTYPE html>
       }, []);
 
       const enqueueSpeech = useCallback((rawText, agent) => {
+        if (!useVoice) return;
         const clean = cleanForSpeech(rawText);
         if (!clean || clean.length < 3) return;
         audioQueueRef.current.push({ text: clean, agent });
         processQueue();
-      }, [processQueue]);
+      }, [useVoice, processQueue]);
 
       const waitForAudioDrained = () => new Promise((resolve) => {
+        if (!useVoice) {
+          resolve();
+          return;
+        }
         const tick = () => {
           if (!isPlayingRef.current && audioQueueRef.current.length === 0) {
             resolve(); return;
@@ -1128,6 +1195,16 @@ HTML_PAGE = r"""<!DOCTYPE html>
           if (stepData.phases_done)        setPhasesDone(stepData.phases_done);
           if (stepData.current_phase !== undefined) setCurrentPhase(stepData.current_phase);
           setConversation(stepData.conversation || []);
+
+          // Highlight the currently active speaking agent visually if voice is disabled
+          if (!useVoice && all.length > 0) {
+            const lastMsg = all[all.length - 1];
+            if (lastMsg && lastMsg.agent && lastMsg.agent !== 'system') {
+              setActiveAgent(lastMsg.agent);
+              await new Promise(r => setTimeout(r, 1200));
+              setActiveAgent(null);
+            }
+          }
 
           if (stepData.done) {
             await waitForAudioDrained();
@@ -1311,12 +1388,22 @@ HTML_PAGE = r"""<!DOCTYPE html>
                 
                 {/* Control Panel */}
                 <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={useVoice}
+                      onChange={(e) => setUseVoice(e.target.checked)}
+                      className="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500/30"
+                    />
+                    <span>Enable Voice</span>
+                  </label>
+                  <span className="text-slate-800">|</span>
                   {!running ? (
                     <>
                       <select
                         value={phase}
                         onChange={(e) => setPhase(Number(e.target.value))}
-                        className="bg-slate-950 border border-slate-850 text-slate-350 text-xs rounded-lg px-2.5 py-1.5 cursor-pointer focus:outline-none focus:border-indigo-500/50">
+                        className="bg-slate-950 border border-slate-700 text-slate-300 text-xs rounded-lg px-2.5 py-1.5 cursor-pointer focus:outline-none focus:border-indigo-500/50">
                         <option value={1}>Phase 1 · Tool Mastery</option>
                         <option value={2}>Phase 2 · Clinical Reasoning</option>
                         <option value={3}>Phase 3 · Empathy + Chaos</option>
@@ -1422,32 +1509,32 @@ HTML_PAGE = r"""<!DOCTYPE html>
                     {conversation.map((msg, idx) => {
                       const color = 
                         msg.agent === 'doctor' ? 'text-indigo-400' :
-                        msg.agent === 'nurse' ? 'text-blue-450' :
+                        msg.agent === 'nurse' ? 'text-blue-400' :
                         msg.agent === 'patient' ? 'text-teal-400' :
-                        'text-slate-450';
+                        'text-slate-400';
                       
                       const bgColor = 
-                        msg.agent === 'doctor' ? 'bg-indigo-950/10 border-indigo-900/10' :
-                        msg.agent === 'nurse' ? 'bg-blue-950/10 border-blue-900/10' :
-                        msg.agent === 'patient' ? 'bg-teal-950/10 border-teal-900/10' :
-                        'bg-slate-900/10 border-slate-850/10';
+                        msg.agent === 'doctor' ? 'bg-indigo-950/20 border-indigo-900/20' :
+                        msg.agent === 'nurse' ? 'bg-blue-950/20 border-blue-900/20' :
+                        msg.agent === 'patient' ? 'bg-teal-950/20 border-teal-900/20' :
+                        'bg-slate-900/20 border-slate-800/20';
 
                       return (
                         <div key={idx} className={`text-xs border rounded-xl p-3 shadow-sm ${bgColor}`}>
                           <div className="flex items-center justify-between font-mono text-[9px] font-bold mb-1">
                             <div className="flex items-center gap-1.5">
                               <span className={`px-1.5 py-0.5 rounded bg-slate-950 ${color}`}>{msg.agent.toUpperCase()}</span>
-                              <span className="text-slate-650 font-normal">→</span>
-                              <span className="text-slate-455">{msg.target ? msg.target.toUpperCase() : 'ALL'}</span>
+                              <span className="text-slate-500 font-normal">→</span>
+                              <span className="text-slate-400">{msg.target ? msg.target.toUpperCase() : 'ALL'}</span>
                             </div>
-                            {msg.type && <span className="text-[8px] text-slate-600 font-normal tracking-wide">{msg.type.toUpperCase()}</span>}
+                            {msg.type && <span className="text-[8px] text-slate-400 font-normal tracking-wide">{msg.type.toUpperCase()}</span>}
                           </div>
                           {msg.thought && (
                             <div className="text-[10px] text-slate-500 italic mb-1.5 font-normal leading-relaxed border-l border-slate-800 pl-2">
                               {msg.thought}
                             </div>
                           )}
-                          <div className="text-slate-300 leading-relaxed font-normal">
+                          <div className="text-slate-300 leading-relaxed font-normal whitespace-pre-wrap">
                             {msg.message}
                           </div>
                         </div>
