@@ -654,7 +654,6 @@ def new_episode():
 
 @app.route("/api/step", methods=["POST"])
 def step():
-    global EPISODE_STATE
     if not EPISODE_STATE["active"] or EPISODE_STATE["done"]:
         return jsonify({"status": "no_active_episode"})
 
