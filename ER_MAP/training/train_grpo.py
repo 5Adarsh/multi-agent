@@ -531,7 +531,7 @@ def _response_logprob(
     response: str,
     device: str,
     max_seq_length: int = 2048,
-) -> Tuple["torch.Tensor", int]:
+) -> Tuple[Any, int]:
     """
     Compute the sum of token-level log-probs of `response` under `model`,
     conditional on `prompt`. Returns (sum_logprob_tensor, num_tokens).
