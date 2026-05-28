@@ -22,24 +22,14 @@ pipeline {
 
         stage('Setup Environment') {
             steps {
-                echo 'Setting up Python Virtual Environment...'
-                script {
-                    if (isUnix()) {
-                        sh '''
-                            python3 -m venv venv
-                            venv/bin/pip install --upgrade pip
-                            venv/bin/pip install -r requirements.txt
-                            venv/bin/pip install pytest flake8 mlflow
-                        '''
-                    } else {
-                        bat '''
-                            py -m venv venv || python -m venv venv
-                            venv\\Scripts\\pip install --upgrade pip
-                            venv\\Scripts\\pip install -r requirements.txt
-                            venv\\Scripts\\pip install pytest flake8 mlflow
-                        '''
-                    }
-                }
+                sh '''
+                    python3.11 -m venv venv
+                    . venv/bin/activate
+                    python --version
+                    pip install --upgrade pip
+                    pip install -r requirements.txt
+                    pip install pytest flake8
+                '''
             }
         }
 
