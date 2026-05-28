@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  # ---------------------------------------------------------
+  # MLflow Tracking Server
+  # ---------------------------------------------------------
+  mlflow:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    container_name: ermap_mlflow
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlruns:/app/mlruns
+      - ./mlflow.db:/app/mlflow.db
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:///mlflow.db
+
+  # ---------------------------------------------------------
+  # ER-MAP Dashboard
+  # ---------------------------------------------------------
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    container_name: ermap_dashboard
+    ports:
+      - "5050:5050"
+    environment:
+      - FLASK_RUN_PORT=5050
+      - PORT=5050
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+    volumes:
+      - .:/app
+    command: python -m ER_MAP.dashboard
+    depends_on:
+      - mlflow
+
+  # ---------------------------------------------------------
+  # Jenkins Controller (Optional, for local CI testing)
+  # ---------------------------------------------------------
+  jenkins:
+    image: jenkins/jenkins:lts
+    container_name: ermap_jenkins
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+    environment:
+      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
+
+volumes:
+  jenkins_home:

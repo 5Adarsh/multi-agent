@@ -1,0 +1,42 @@
+# ER-MAP Local Development Image
+# Includes all dependencies for training (GRPO, Iris) and the dashboard.
+
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONIOENCODING=utf-8 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install all Python dependencies needed for the full stack
+RUN pip install --upgrade pip && pip install \
+    "gymnasium>=0.29.0" \
+    "groq>=0.4.0" \
+    "fastapi>=0.110.0" \
+    "uvicorn[standard]>=0.27.0" \
+    "pydantic>=2.0.0" \
+    "transformers" \
+    "peft" \
+    "accelerate" \
+    "datasets" \
+    "flask" \
+    "mlflow" \
+    "scikit-learn" \
+    "pandas" \
+    "numpy" \
+    "sentencepiece" \
+    "torch"
+
+# Copy the rest of the application
+COPY . /app/
+
+# The default command will be overridden by docker-compose for each specific service
+CMD ["bash"]
