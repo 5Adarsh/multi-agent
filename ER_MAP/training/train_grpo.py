@@ -810,6 +810,7 @@ def train(
         logger.info(f"Clamping group_size from {group_size} to {num_episodes} for lightweight execution")
         group_size = num_episodes
 
+    torch = None
     try:
         import torch
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -1241,7 +1242,7 @@ def train(
                 logger.error(f"  GRPO update failed: {e}")
                 # Best-effort recovery: drop graphs/cache so the next group
                 # starts from a clean VRAM baseline instead of cascading OOM.
-                if torch.cuda.is_available():
+                if torch and torch.cuda.is_available():
                     optimizer.zero_grad(set_to_none=True)
                     gc.collect()
                     torch.cuda.empty_cache()
@@ -1249,7 +1250,7 @@ def train(
 
         # --- Free generation activations / KV cache before the next group ---
         del trajectories
-        if torch.cuda.is_available():
+        if torch and torch.cuda.is_available():
             gc.collect()
             torch.cuda.empty_cache()
 
