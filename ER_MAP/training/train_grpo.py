@@ -538,6 +538,7 @@ def _response_logprob(
     The returned tensor remains on the autograd graph if model has
     requires_grad enabled.
     """
+    # pyrefly: ignore [missing-import]
     import torch
     full = prompt + response
     full_ids = tokenizer(
