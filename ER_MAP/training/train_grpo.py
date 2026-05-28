@@ -51,8 +51,6 @@ import logging
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field
 
-import torch
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -258,6 +256,7 @@ def load_model_and_tokenizer(
     load_in_4bit: bool = True,
 ):
     """Load Doctor policy model with Unsloth or HF fallback."""
+    import torch
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
     # Determine target modules based on model architecture
@@ -327,6 +326,7 @@ def load_reference_model(model_name: str, max_seq_length: int = 2048):
     Load a frozen reference policy for KL regularization in GRPO.
     The reference is the un-LoRA'd base model (no adapters, no grad).
     """
+    import torch
     device = "cuda" if torch.cuda.is_available() else "cpu"
     if device == "cuda":
         try:
@@ -391,6 +391,7 @@ def generate_doctor_action(
     temperature: float = 0.7,
 ) -> str:
     """Generate Doctor's JSON action from observation."""
+    import torch
     # Allow override from env so we can dial generation length without
     # editing code (used by the Kaggle clean_launch when VRAM is tight).
     _env_mnt = os.environ.get("ERMAP_DOCTOR_MAX_NEW_TOKENS")
@@ -530,13 +531,14 @@ def _response_logprob(
     response: str,
     device: str,
     max_seq_length: int = 2048,
-) -> Tuple[torch.Tensor, int]:
+) -> Tuple["torch.Tensor", int]:
     """
     Compute the sum of token-level log-probs of `response` under `model`,
     conditional on `prompt`. Returns (sum_logprob_tensor, num_tokens).
     The returned tensor remains on the autograd graph if model has
     requires_grad enabled.
     """
+    import torch
     full = prompt + response
     full_ids = tokenizer(
         full, return_tensors="pt", truncation=True, max_length=max_seq_length
@@ -588,6 +590,7 @@ def manual_grpo_step(
     surrogate for low-magnitude policy drift). Token-level masking
     ensures we only learn from response tokens, not prompt tokens.
     """
+    import torch
     if not trajectories:
         return {"loss": 0.0, "kl": 0.0, "n_steps": 0}
 
@@ -807,7 +810,11 @@ def train(
         logger.info(f"Clamping group_size from {group_size} to {num_episodes} for lightweight execution")
         group_size = num_episodes
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    try:
+        import torch
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    except ImportError:
+        device = "cpu"
     logger.info(f"Device: {device}")
     logger.info(
         f"GRPO Config: group_size={group_size}, lr={learning_rate}, "
@@ -899,6 +906,7 @@ def train(
                 "kl_beta <= 0 -> skipping reference model load "
                 "(saves ~5 GB VRAM; GRPO loss will use pure advantage term)"
             )
+        import torch
         trainable = [p for p in model.parameters() if p.requires_grad]
         optimizer = torch.optim.AdamW(trainable, lr=learning_rate)
     else:
