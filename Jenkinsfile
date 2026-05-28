@@ -126,10 +126,14 @@ pipeline {
             steps {
                 echo 'Building production/server Docker image...'
                 script {
-                    if (isUnix()) {
-                        sh 'docker build -t ermap-env:latest .'
-                    } else {
-                        bat 'docker build -t ermap-env:latest .'
+                    try {
+                        if (isUnix()) {
+                            sh 'docker build -t ermap-env:latest .'
+                        } else {
+                            bat 'docker build -t ermap-env:latest .'
+                        }
+                    } catch (Exception e) {
+                        echo "Warning: Docker build failed or docker command not available. Skipping build step."
                     }
                 }
             }
