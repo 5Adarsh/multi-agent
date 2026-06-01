@@ -233,4 +233,3 @@ python -m ER_MAP.dashboard
 Hugging Face for credits and the Hub. The OpenEnv/PyTorch team for a well-designed hackathon brief. Unsloth for the 4-bit fused LoRA kernel that makes this fit on a T4. Groq for the 8B and 70B inference APIs. The Kaggle team for free T4 GPU sessions.
 
 — Team devops
-
