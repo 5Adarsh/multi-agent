@@ -1,65 +1,100 @@
 #!/bin/bash
-# AWS EC2 Amazon Linux 2023 Setup Script for ER-MAP Stack
-# Run this script as root or with sudo: sudo bash aws_deploy/setup_ec2.sh
+# AWS EC2 Ubuntu Setup Script for ER-MAP Stack
+# Supports: Ubuntu 20.04 / 22.04 / 24.04
+# Run as root or with sudo: sudo bash aws_deploy/setup_ec2.sh
 
 set -e
 
 echo "=========================================="
-echo " Starting EC2 ER-MAP Stack Setup (Amazon Linux 2023)"
+echo " ER-MAP Stack Setup — Ubuntu EC2"
 echo "=========================================="
 
-# 1. Update and install system dependencies
-echo ">>> Installing System Dependencies..."
-dnf update -y
-dnf install -y python3 python3-pip git curl wget tar
+# 1. Update package index
+echo ">>> Updating package index..."
+apt-get update -y
 
-# 2. Install Java 17 (Corretto is the default on AL2023)
+# 2. Install system dependencies
+echo ">>> Installing system dependencies..."
+apt-get install -y \
+    python3 python3-pip python3-venv python3-dev \
+    git curl wget tar \
+    ca-certificates gnupg lsb-release \
+    software-properties-common
+
+# 3. Install Java 17 (OpenJDK)
 echo ">>> Installing Java 17..."
-dnf install -y java-17-amazon-corretto
+apt-get install -y openjdk-17-jdk
+java -version
 
-# 3. Install Jenkins
+# 4. Install Jenkins
 echo ">>> Installing Jenkins..."
-wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat-stable/jenkins.repo
-rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
-
-dnf install -y jenkins
-
-# Ensure Jenkins runs on port 8080 (default)
+if ! systemctl is-active --quiet jenkins 2>/dev/null; then
+    curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | tee \
+        /usr/share/keyrings/jenkins-keyring.asc > /dev/null
+    echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] \
+        https://pkg.jenkins.io/debian-stable binary/" | tee \
+        /etc/apt/sources.list.d/jenkins.list > /dev/null
+    apt-get update -y
+    apt-get install -y jenkins
+fi
 systemctl enable jenkins
 systemctl start jenkins
 
-# 4. Setup Python Virtual Environment and Install Dependencies
+# 5. Install Docker
+echo ">>> Installing Docker..."
+if ! command -v docker &> /dev/null; then
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
+        gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    chmod a+r /etc/apt/keyrings/docker.gpg
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+        https://download.docker.com/linux/ubuntu \
+        $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+        tee /etc/apt/sources.list.d/docker.list > /dev/null
+    apt-get update -y
+    apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
+fi
+systemctl enable docker
+systemctl start docker
+# Allow ubuntu/ec2-user to use docker without sudo
+usermod -aG docker ubuntu 2>/dev/null || usermod -aG docker ec2-user 2>/dev/null || true
+
+# 6. Setup Python Virtual Environment and Install Dependencies
 echo ">>> Setting up Python Virtual Environment..."
 REPO_DIR=$(pwd)
-VENV_DIR="/home/ec2-user/ermap_venv"
+VENV_DIR="/home/ubuntu/ermap_venv"
+ECU="ubuntu"
+# Support both ubuntu and ec2-user (depending on AMI)
+if id ec2-user &>/dev/null; then
+    VENV_DIR="/home/ec2-user/ermap_venv"
+    ECU="ec2-user"
+fi
 
 if [ ! -d "$VENV_DIR" ]; then
     python3 -m venv $VENV_DIR
 fi
 
 echo ">>> Installing Python dependencies..."
-# Upgrade pip
 $VENV_DIR/bin/pip install --upgrade pip
+$VENV_DIR/bin/pip install \
+    transformers peft accelerate datasets \
+    flask mlflow scikit-learn pandas numpy \
+    sentencepiece gymnasium groq fastapi \
+    "uvicorn[standard]" pydantic python-dotenv
 
-# Install required packages for MLflow, ER-MAP Dashboard, and GRPO training
-$VENV_DIR/bin/pip install transformers peft accelerate datasets flask mlflow scikit-learn pandas numpy sentencepiece
-
-# 5. Setup Systemd Services for MLflow and Dashboard
+# 7. Setup Systemd Services for MLflow and Dashboard
 echo ">>> Configuring Systemd Services..."
 
-# Copy service files to systemd directory
 cp aws_deploy/mlflow.service /etc/systemd/system/
 cp aws_deploy/ermap-dashboard.service /etc/systemd/system/
 
-# Fix user and paths in service files to point to actual repo directory
 sed -i "s|/path/to/repo|$REPO_DIR|g" /etc/systemd/system/mlflow.service
 sed -i "s|/path/to/repo|$REPO_DIR|g" /etc/systemd/system/ermap-dashboard.service
-sed -i "s|User=ubuntu|User=ec2-user|g" /etc/systemd/system/mlflow.service
-sed -i "s|User=ubuntu|User=ec2-user|g" /etc/systemd/system/ermap-dashboard.service
-sed -i "s|/home/ubuntu|/home/ec2-user|g" /etc/systemd/system/mlflow.service
-sed -i "s|/home/ubuntu|/home/ec2-user|g" /etc/systemd/system/ermap-dashboard.service
+sed -i "s|User=ubuntu|User=$ECU|g" /etc/systemd/system/mlflow.service
+sed -i "s|User=ubuntu|User=$ECU|g" /etc/systemd/system/ermap-dashboard.service
+sed -i "s|/home/ubuntu|/home/$ECU|g" /etc/systemd/system/mlflow.service
+sed -i "s|/home/ubuntu|/home/$ECU|g" /etc/systemd/system/ermap-dashboard.service
 
-# Reload systemd and start services
 systemctl daemon-reload
 systemctl enable mlflow
 systemctl enable ermap-dashboard
@@ -70,8 +105,9 @@ echo "=========================================="
 echo " Setup Complete!"
 echo "=========================================="
 echo "Services Status:"
-echo " - Jenkins: Port 8080 (Initial password: $(cat /var/lib/jenkins/secrets/initialAdminPassword 2>/dev/null || echo 'Not ready yet'))"
-echo " - MLflow: Port 5000"
-echo " - ER-MAP Dashboard: Port 5050"
+JPWD=$(cat /var/lib/jenkins/secrets/initialAdminPassword 2>/dev/null || echo 'Not ready yet — wait 60s')
+echo " - Jenkins:   Port 8080  (admin password: $JPWD)"
+echo " - MLflow:    Port 5000"
+echo " - Dashboard: Port 5050"
 echo "=========================================="
-echo "Please refer to aws_deploy/jenkins_jobs_setup.md to configure your Jenkins jobs."
+echo "Next: see aws_deploy/jenkins_jobs_setup.md to configure Jenkins jobs."

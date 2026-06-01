@@ -1,22 +1,22 @@
 all:
   children:
-    staging:
-      hosts:
-        staging-server.local:
-          ansible_host: 192.168.1.100
-          ansible_user: ubuntu
+    # -----------------------------------------------------------------
+    # Production EC2 instance: eu-north-1 (Stockholm)
+    # EC2 DNS: ec2-13-60-49-21.eu-north-1.compute.amazonaws.com
+    # -----------------------------------------------------------------
     production:
       hosts:
-        prod-server.local:
-          ansible_host: 192.168.1.200
-          ansible_user: ubuntu
+        ermap-ec2:
+          ansible_host: 13.60.49.21
+          ansible_user: ec2-user
     mlflow:
       hosts:
-        mlflow-server.local:
-          ansible_host: 192.168.1.150
-          ansible_user: ubuntu
+        ermap-ec2:
+          ansible_host: 13.60.49.21
+          ansible_user: ec2-user
 
   vars:
     # Global environment configurations
     ansible_port: 22
-    ansible_ssh_private_key_file: ~/.ssh/id_rsa
+    ansible_ssh_private_key_file: ./ml.pem
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
